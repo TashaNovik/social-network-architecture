@@ -1,68 +1,76 @@
-Диаграмма представляет собой архитектуру микросервисов, разделённую на несколько доменов и уровней взаимодействия. Ниже описаны все микросервисы, их функции, используемые технологии и взаимодействие между ними.
+Диаграмма отражает архитектуру микросервисной социальной платформы, разделённую на домены и уровни взаимодействия. Ниже описаны все микросервисы, их функции, используемые технологии и взаимодействие между ними.
 
 ## Общая структура
 
 Диаграмма включает следующие основные компоненты:
-- **Внешние сущности**: User (Пользователь), Administrator (Администратор), External Services (Внешние сервисы).
-- **API Gateway**: Центральная точка входа для маршрутизации запросов.
+- **Клиенты**: User (Пользователь), Administrator (Администратор) — веб/мобильные клиенты.
+- **Load Balancer [nginx/HAProxy]**: Балансирует входящий трафик между API Gateway.
+- **API Gateway [Kong/Nginx]**: Центральная точка входа для маршрутизации запросов к микросервисам по gRPC/REST.
+- **Внешние интеграции**:
+  - **External Services [Email, Push]** — для отправки уведомлений.
+  - **CDN [CloudFront]** — для доставки медиафайлов пользователям напрямую по HTTPS.
 - **Доменные микросервисы**, разделённые на 4 группы:
-  - **Core & Media**: Основные сервисы и работа с медиа.
-  - **Supporting Services**: Поддерживающие сервисы.
-  - **Content & Feeds**: Сервисы для работы с контентом и лентами.
-  - **User & Social Graph**: Сервисы для управления пользователями и социальной графой.
-- **Общая инфраструктура (Shared Infrastructure)**: Redis Cluster и Apache Kafka для кэширования и асинхронного взаимодействия.
+  - **Core & Media**: Notification Service, Media Service, Messaging Service.
+  - **Supporting Services**: Search Service, Admin Service.
+  - **Content & Feeds**: Post Service, Comment Service, NewsFeed Service.
+  - **User & Social Graph**: Auth Service, User Service, Friendship Service.
+- **Shared Infrastructure**: Redis Cluster (Cache, Pub/Sub), Apache Kafka (Event Bus).
 
-## Внешние сущности
+## Внешние сущности и интеграции
 
 - **User (Пользователь)**: 
-  - Взаимодействует с системой через API Gateway по протоколу HTTPS.
-  - Использует Users API для отправки запросов.
+  - Использует API (HTTPS) для взаимодействия с системой через Load Balancer и API Gateway.
+  - Получает медиа напрямую через CDN (CloudFront) по HTTPS.
 - **Administrator (Администратор)**: 
-  - Взаимодействует через API Gateway по HTTPS.
-  - Использует Admin API для управления системой.
-- **External Services (Внешние сервисы)**: 
-  - Включают Email и Push-уведомления.
-  - Используются для доставки медиа (Delivers Media via).
+  - Использует Admin API (HTTPS) через Load Balancer и API Gateway.
+- **External Services (Email, Push)**: 
+  - Получают уведомления от Notification Service.
+- **CDN (CloudFront)**: 
+  - Доставляет медиафайлы пользователям.
+
+## Load Balancer
+
+- **Load Balancer [nginx/HAProxy]**:
+  - Балансирует входящий трафик между API Gateway.
 
 ## API Gateway
 
 - **API Gateway [Kong/Nginx]**:
   - Центральная точка входа для всех внешних запросов.
-  - Принимает запросы от пользователей и администраторов по HTTPS.
-  - Маршрутизирует запросы к микросервисам по протоколу gRPC или REST.
+  - Маршрутизирует запросы к микросервисам по gRPC/REST.
 
 ## Доменные микросервисы
 
-### 1. Core & Media (Основные сервисы и работа с медиа)
+### 1. Core & Media
 
 - **Notification Service [MongoDB]**:
   - Функция: Отправляет уведомления (Email, Push) через внешние сервисы.
-  - Технологии: MongoDB для хранения данных, Redis Cluster для кэширования и подписки на уведомления (Pub/Sub).
+  - Технологии: MongoDB для хранения данных, Redis Cluster для кэширования и подписки на уведомления (Sub: for Notifications).
   - Взаимодействие: Отправляет уведомления внешним сервисам.
 
 - **Media Service [S3, PostgreSQL]**:
-  - Функция: Управляет медиафайлами, доставляет их через CDN [CloudFront].
+  - Функция: Управляет медиафайлами, доставляет их через CDN (CloudFront).
   - Технологии: S3 для хранения файлов, PostgreSQL для метаданных, Redis для подписки на уведомления (Pub/Sub).
-  - Взаимодействие: Доставляет медиа внешним сервисам и социальным сетям.
+  - Взаимодействие: Доставляет медиа через CDN.
 
 - **Messaging Service [Cassandra, WebSocket]**:
-  - Функция: Обеспечивает функционал мессенджера в реальном времени.
+  - Функция: Реализует обмен сообщениями в реальном времени.
   - Технологии: Cassandra для хранения сообщений, WebSocket для обмена данными, Redis для подписки на уведомления (Pub/Sub).
   - Взаимодействие: Обрабатывает сообщения пользователей через WebSocket.
 
-### 2. Supporting Services (Поддерживающие сервисы)
+### 2. Supporting Services
 
 - **Search Service [Elasticsearch]**:
-  - Функция: Обеспечивает поиск по данным системы.
+  - Функция: Поиск по данным системы.
   - Технологии: Elasticsearch для индексации и поиска, Apache Kafka для подписки на поисковые события (Sub: for Search).
   - Взаимодействие: Получает события поиска через Kafka.
 
 - **Admin Service [PostgreSQL]**:
-  - Функция: Управляет административными задачами.
+  - Функция: Управление административными задачами.
   - Технологии: PostgreSQL для хранения данных.
   - Взаимодействие: Принимает запросы от API Gateway по gRPC/REST.
 
-### 3. Content & Feeds (Контент и ленты)
+### 3. Content & Feeds
 
 - **Post Service [MongoDB]**:
   - Функция: Управляет постами пользователей.
@@ -74,56 +82,55 @@
   - Технологии: MongoDB для хранения данных, Apache Kafka для публикации событий контента (Pub: Content Events).
   - Взаимодействие: Принимает запросы через API Gateway (gRPC/REST), публикует события в Kafka.
 
-- **Newsfeed Service [PostgreSQL]**:
+- **NewsFeed Service [PostgreSQL]**:
   - Функция: Формирует новостные ленты пользователей.
   - Технологии: PostgreSQL для хранения данных, Apache Kafka для подписки на события лент (Sub: for Feeds) и публикации событий контента (Pub: Content Events).
   - Взаимодействие: Принимает запросы через API Gateway, взаимодействует с Kafka.
 
-### 4. User & Social Graph (Пользователи и социальный граф)
+### 4. User & Social Graph
 
 - **Auth Service [PostgreSQL]**:
-  - Функция: Отвечает за аутентификацию и авторизацию.
+  - Функция: Аутентификация и авторизация.
   - Технологии: PostgreSQL для хранения данных, Apache Kafka для публикации событий пользователей (Pub: User Events).
   - Взаимодействие: Принимает запросы через API Gateway (gRPC/REST), публикует события в Kafka.
 
 - **User Service [PostgreSQL]**:
-  - Функция: Управляет данными пользователей.
+  - Функция: Управление данными пользователей.
   - Технологии: PostgreSQL для хранения данных, Apache Kafka для публикации событий пользователей (Pub: User Events).
   - Взаимодействие: Принимает запросы через API Gateway (gRPC/REST), публикует события в Kafka.
 
 - **Friendship Service [PostgreSQL]**:
-  - Функция: Управляет социальными связями (дружбой).
+  - Функция: Управление социальными связями (дружбой).
   - Технологии: PostgreSQL для хранения данных, Apache Kafka для публикации событий пользователей (Pub: User Events).
   - Взаимодействие: Принимает запросы через API Gateway (gRPC/REST), публикует события в Kafka.
 
-## Общая инфраструктура
+## Shared Infrastructure
 
-- **Redis Cluster [Cache]**:
-  - Функция: Кэширование данных и механизм публикации/подписки (Pub/Sub).
-  - Используется сервисами: Notification Service, Media Service, Messaging Service.
+- **Redis Cluster [Cache, Pub/Sub]**:
+  - Кэширование данных и механизм публикации/подписки.
+  - Используется сервисами: Notification Service (Sub: for Notifications), Media Service, Messaging Service.
 
 - **Apache Kafka [Event Bus]**:
-  - Функция: Асинхронное взаимодействие между сервисами через шину событий.
+  - Асинхронное взаимодействие между сервисами через шину событий.
   - Поддерживает:
-    - Публикацию событий контента (Post Service, Comment Service, Newsfeed Service).
-    - Публикацию событий пользователей (Auth Service, User Service, Friendship Service).
-    - Подписку на события лент (Newsfeed Service).
-    - Подписку на события поиска (Search Service).
+    - Публикацию событий контента (Post Service, Comment Service, NewsFeed Service) — Pub: Content Events.
+    - Публикацию событий пользователей (Auth Service, User Service, Friendship Service) — Pub: User Events.
+    - Подписку на события лент (NewsFeed Service) — Sub: for Feeds.
+    - Подписку на события поиска (Search Service) — Sub: for Search.
 
 ## Взаимодействие между компонентами
 
-1. **Пользователи и администраторы** отправляют запросы через API Gateway по HTTPS.
+1. **Пользователи и администраторы** отправляют запросы через Load Balancer и API Gateway по HTTPS.
 2. **API Gateway** маршрутизирует запросы к микросервисам по gRPC/REST.
-3. **Notification Service** отправляет уведомления через внешние сервисы, используя Redis для кэширования и подписки.
-4. **Media Service** доставляет медиа через CDN, подписывается на уведомления через Redis.
+3. **Notification Service** отправляет уведомления через внешние сервисы (Email, Push), используя Redis для кэширования и подписки (Sub: for Notifications).
+4. **Media Service** доставляет медиа через CDN (CloudFront), подписывается на уведомления через Redis.
 5. **Messaging Service** обеспечивает обмен сообщениями через WebSocket, подписывается на уведомления через Redis.
-6. **Search Service** получает поисковые события через Apache Kafka.
+6. **Search Service** получает поисковые события через Apache Kafka (Sub: for Search).
 7. **Admin Service** обрабатывает административные запросы от API Gateway.
-8. **Post Service, Comment Service, Newsfeed Service** публикуют события контента в Kafka; Newsfeed Service также подписывается на события лент.
-9. **Auth Service, User Service, Friendship Service** публикуют события пользователей в Kafka.
+8. **Post Service, Comment Service, NewsFeed Service** публикуют события контента в Kafka (Pub: Content Events); NewsFeed Service также подписывается на события лент (Sub: for Feeds).
+9. **Auth Service, User Service, Friendship Service** публикуют события пользователей в Kafka (Pub: User Events).
 10. **Apache Kafka** служит шиной событий для асинхронного обмена данными.
 11. **Redis Cluster** используется для кэширования и Pub/Sub механизма уведомлений.
+12. **Пользователи получают медиа напрямую через CDN (CloudFront) по HTTPS.**
 
-## Итог
-
-Архитектура представляет чётко структурированную систему микросервисов. Каждый сервис отвечает за свою задачу, взаимодействуя через API Gateway для синхронных запросов и Apache Kafka для асинхронных событий. Redis обеспечивает кэширование и уведомления, что делает систему масштабируемой и надёжной.
+Архитектура представляет чётко структурированную систему микросервисов. Каждый сервис отвечает за свою задачу, взаимодействуя через API Gateway для синхронных запросов и Apache Kafka для асинхронных событий. Redis обеспечивает кэширование и уведомления, а CDN (CloudFront) — быструю доставку медиа, что делает систему масштабируемой и надёжной.
